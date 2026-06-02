@@ -76,13 +76,15 @@ class NewsItem:
 # Servem como baixa latência e custo zero (ver tabela em IA_NOTICIAS.md).
 # ---------------------------------------------------------------------------
 DEFAULT_RSS_FEEDS: list[str] = [
-    # Reuters — mercados / negócios (URL plausível; ajuste se mudar).
-    "https://feeds.reuters.com/reuters/businessNews",
-    "https://feeds.reuters.com/news/wealth",
-    # Investing.com — notícias econômicas/forex.
+    # Feeds VERIFICADOS (respondem e trazem notícia financeira em volume).
+    # Yahoo Finance — alto volume de notícias de mercado.
+    "https://finance.yahoo.com/news/rssindex",
+    # CNBC — mercados e finanças.
+    "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+    "https://www.cnbc.com/id/10000664/device/rss/rss.html",
+    # Investing.com — notícias econômicas e forex.
     "https://www.investing.com/rss/news_285.rss",
-    # FXStreet — análise e notícias de forex.
-    "https://www.fxstreet.com/rss/news",
+    "https://www.investing.com/rss/news_1.rss",
 ]
 
 

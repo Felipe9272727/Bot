@@ -65,6 +65,20 @@ def _bias_neutro(symbol: str, rationale: str, stale: bool = False,
     )
 
 
+# Termos de busca/relevância por símbolo: usados para filtrar as notícias ao
+# vivo (RSS/GDELT) que importam para cada ativo. Ajustável conforme necessário.
+SYMBOL_QUERY: dict[str, list[str]] = {
+    "USDCAD": ["oil", "crude", "opec", "canada", "canadian dollar", "fed", "boc"],
+    "USOIL":  ["oil", "crude", "opec", "brent", "wti", "energy"],
+    "XAUUSD": ["gold", "inflation", "fed", "war", "safe haven", "rates"],
+    "EURUSD": ["euro", "ecb", "fed", "eurozone", "inflation"],
+    "GBPUSD": ["pound", "boe", "uk", "britain", "inflation"],
+    "USDJPY": ["yen", "boj", "japan", "fed", "rates"],
+    "SPX":    ["stocks", "s&p", "wall street", "recession", "earnings", "fed"],
+    "BTCUSD": ["bitcoin", "crypto", "etf", "sec"],
+}
+
+
 class NewsBiasEngine:
     """Motor de viés por notícias.
 
@@ -273,6 +287,37 @@ class NewsBiasEngine:
         except Exception as exc:  # noqa: BLE001 - fail-safe: nunca derruba o trader
             return _bias_neutro(
                 symbol, f"fail-safe bias_from_headlines: {exc!r}", stale=True)
+
+    def bias_from_live_news(self, symbol, scorer=None, max_items: int = 40) -> Bias:
+        """Busca notícias AO VIVO (RSS + GDELT), filtra por relevância do símbolo
+        e gera um ``Bias`` automaticamente — sem manchetes manuais.
+
+        Pipeline:
+          1. RSS (``DEFAULT_RSS_FEEDS``) + GDELT (busca pelos termos do símbolo);
+          2. dedup + filtro de relevância (``SYMBOL_QUERY``);
+          3. ``bias_from_headlines`` (news_mapper -> direção; FinBERT opcional).
+
+        Fail-safe: sem notícia relevante ou qualquer erro -> Bias neutro
+        (``stale=True`` em caso de erro). A IA nunca derruba o trader.
+        """
+        try:
+            from . import news_sources as ns
+
+            kws = SYMBOL_QUERY.get(symbol.upper(), [])
+            itens = list(ns.fetch_rss(ns.DEFAULT_RSS_FEEDS))
+            if kws:
+                itens += list(ns.fetch_gdelt(" OR ".join(kws[:4])))
+            itens = ns.dedup(itens)
+            if kws:
+                itens = ns.filter_relevant(itens, kws)
+            itens = itens[:max_items]
+
+            manchetes = [f"{it.title} {it.summary}".strip() for it in itens]
+            if not manchetes:
+                return _bias_neutro(symbol, "sem noticia relevante ao vivo")
+            return self.bias_from_headlines(symbol, manchetes, scorer=scorer)
+        except Exception as exc:  # noqa: BLE001 - fail-safe
+            return _bias_neutro(symbol, f"fail-safe live: {exc!r}", stale=True)
 
 
 # ----------------------------------------------------------------------------
