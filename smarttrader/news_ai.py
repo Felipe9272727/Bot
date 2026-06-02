@@ -240,6 +240,40 @@ class NewsBiasEngine:
         """
         raise NotImplementedError("_interpret_macro ainda nao plugado")
 
+    # ------------------------------------------------------------------
+    # Caminho USÁVEL hoje: viés a partir de manchetes (news_mapper + FinBERT)
+    # ------------------------------------------------------------------
+    def bias_from_headlines(self, symbol, headlines, scorer=None) -> Bias:
+        """Gera um ``Bias`` a partir de manchetes, SEM precisar de LLM.
+
+        - Direção: ``news_mapper`` (regras macro->direção; trata forças
+          conflitantes, ex.: petróleo↑ x safe-haven).
+        - Confiança: a do ``news_mapper``, opcionalmente REFORÇADA por um
+          ``FinBertSentiment`` (parâmetro ``scorer``): sentimento forte e
+          consistente eleva a confiança; fraco, atenua.
+
+        É o ponto onde o seu modelo treinado no Colab se conecta::
+
+            from smarttrader.sentiment import FinBertSentiment
+            fb = FinBertSentiment("finbert_ft")          # modelo do Colab
+            vies = engine.bias_from_headlines("USDCAD", manchetes, scorer=fb)
+
+        Fail-safe: qualquer erro -> Bias neutro com ``stale=True``.
+        """
+        try:
+            from .news_mapper import bias_for_symbol, detect_themes
+            temas = detect_themes(headlines)
+            b, conf, rationale = bias_for_symbol(symbol, temas)
+            if scorer is not None and headlines:
+                # reforço leve pela confiança média de sentimento (0..1)
+                sent = scorer.avg_confidence(headlines)
+                conf = max(0.0, min(1.0, conf * (0.5 + 0.5 * sent)))
+            return Bias(symbol=symbol, bias=int(b), confidence=float(conf),
+                        rationale=rationale)
+        except Exception as exc:  # noqa: BLE001 - fail-safe: nunca derruba o trader
+            return _bias_neutro(
+                symbol, f"fail-safe bias_from_headlines: {exc!r}", stale=True)
+
 
 # ----------------------------------------------------------------------------
 # EXEMPLO COMENTADO — como um viés REAL seria montado
