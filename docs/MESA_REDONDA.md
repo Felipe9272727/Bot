@@ -1,5 +1,21 @@
 # 🗣️ Mesa Redonda de Especialistas — Revisão do Bot (Fase 1/2)
 
+> ⏳ **Aviso histórico (contexto):** este debate ocorreu na **fase MT4/MQL4** do
+> projeto. As referências a arquivos `.mqh` (`Indicators.mqh`, `AIBridge.mqh`,
+> `RiskManager.mqh`), a inputs de EA (`UseAI`, `MaxDailyLossPercent`, etc.) e à
+> **ponte `WebRequest`/HTTP** são **HISTÓRICAS** — não existem mais no código
+> atual. O projeto migrou para **MT5 comandado por Python** (módulos
+> `smarttrader/*`), com a IA de notícias chamada **em processo** (sem HTTP — ver
+> `docs/ARQUITETURA.md` e `docs/IA_NOTICIAS.md`).
+>
+> As **CONCLUSÕES continuam válidas**: risco em primeiro lugar (drawdown global,
+> perdas consecutivas), IA como **veto / filtro de qualidade** (não gatilho de
+> entrada), **custos reais no backtest** e **validação walk-forward** fora de
+> amostra. Várias já foram implementadas no núcleo Python (ADX, stops por ATR,
+> filtro de tendência HTF, sessão, travas de risco). O conteúdo abaixo é
+> preservado como registro do debate; leia os detalhes técnicos no contexto da
+> fase MT4.
+
 Quatro especialistas analisaram o código real do projeto, de forma independente.
 Este documento registra o debate e as decisões que saíram dele.
 

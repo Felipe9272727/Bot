@@ -1,8 +1,11 @@
 # 🤖📰 Motor de IA de Notícias (sinal de direção)
 
-Serviço de IA que **lê notícias mundiais em tempo real**, interpreta o impacto
+Motor de IA que **lê notícias mundiais em tempo real**, interpreta o impacto
 macro e devolve um **viés de direção** (comprar / vender / neutro) + confiança
-para um ativo. Roda no dispositivo do usuário; o EA do MT4 consulta via HTTP.
+para um ativo. É um **módulo Python** (`smarttrader/news_ai.py`) chamado **em
+processo** pelo trader — **não** há servidor HTTP nem ponte entre processos. O
+mesmo processo Python que comanda o MetaTrader 5 importa o motor e o consulta
+diretamente (ver `docs/ARQUITETURA.md`).
 
 > ⚠️ **Expectativa realista (honestidade obrigatória):** notícia "óbvia" já entra
 > no preço em segundos por algoritmos institucionais. A borda de varejo **não está
@@ -28,40 +31,49 @@ O LLM precisa raciocinar sobre **forças conflitantes**, não reagir a uma palav
 Lição de design: o modelo deve poder dizer "não sei" (neutro), em vez de inventar
 convicção. Fonte: [Petróleo x USDCAD](https://fortuneprime.com/education/geopolitical-oil-shocks-usd-cad-dynamics-explained/).
 
-## Arquitetura do serviço (no dispositivo do usuário)
+## Arquitetura do motor (módulo Python, em processo)
 
 ```
-[RSS/GDELT/Finnhub calendário]
-        │  ingest (asyncio)
+[RSS/GDELT/Finnhub calendário]   ← smarttrader/news_sources.py (ingestão)
+        │  ingest
         ▼
-[Dedup + filtro de relevância por símbolo]
+[Dedup + filtro de relevância por símbolo]   ← news_sources.dedup() / filter_relevant()
         │
         ▼
 [FinBERT — score barato p/ descartar ruído]   ← economiza chamadas de LLM
         │ (só notícia relevante passa)
         ▼
 [LLM interpreta macro → viés direcional + confiança]
-        │
+        │  (baseline auditável: smarttrader/news_mapper.py)
         ▼
 [Cache de viés por símbolo + TTL + modo defensivo]
-        │  HTTP localhost
+        │  chamada de função, NO MESMO processo
         ▼
-[EA do MT4 consulta via WebRequest]
+[trader.py chama NewsBiasEngine.get_bias(symbol) -> Bias]
 ```
 
 ### Componentes
-1. **Ingestor** — RSS (Reuters/Investing/FXStreet) a cada ~30-60s + GDELT DOC a
-   cada 15 min + calendário econômico (Finnhub) 1×/h. Dedup por hash de título/URL.
+1. **Ingestor** (`smarttrader/news_sources.py`, já existe) — RSS
+   (Reuters/Investing/FXStreet) a cada ~30-60s + GDELT DOC a cada 15 min +
+   calendário econômico (Finnhub) 1×/h. Dedup por hash de título/URL e filtro de
+   relevância por símbolo. Será plugado pelo gancho `_fetch_news`.
 2. **Pré-filtro barato** — relevância por palavra-chave/símbolo + FinBERT local
-   para descartar notícia neutra **antes** de gastar uma chamada de LLM.
-3. **Intérprete LLM** — só roda quando há notícia nova relevante. Prompt pede
-   cadeia causal + forças conflitantes + viés + confiança, com instrução explícita
-   de devolver NEUTRO em ambiguidade.
+   para descartar notícia neutra **antes** de gastar uma chamada de LLM. Plugado
+   pelo gancho `_score_sentiment`.
+3. **Intérprete macro** — `smarttrader/news_mapper.py` (já existe) é o **baseline
+   determinístico e auditável** (macro→direção por regras), e o **LLM** entra como
+   camada de interpretação mais rica. Só roda quando há notícia nova relevante.
+   Pede cadeia causal + forças conflitantes + viés + confiança, com instrução
+   explícita de devolver NEUTRO em ambiguidade. Plugado pelo gancho
+   `_interpret_macro`.
 4. **Cache/estado** — viés por símbolo com **TTL** (ex.: 2-6h) e decaimento de
-   confiança no tempo.
+   confiança no tempo (campo `_cache` em `NewsBiasEngine`).
 5. **Modo defensivo** — nos ±15 min de evento de alto impacto (NFP, FOMC, CPI),
-   retorna `blocked=true` (não tenta adivinhar o spike).
-6. **Servidor HTTP** (Flask/FastAPI) em `127.0.0.1`.
+   retorna `blocked=True` (não tenta adivinhar o spike).
+
+> Os ganchos `_fetch_news` / `_score_sentiment` / `_interpret_macro` já existem
+> em `news_ai.py` como pontos de extensão (`NotImplementedError` por enquanto):
+> são exatamente onde as peças acima se plugam, sem mudar o contrato público.
 
 ### Fontes de dados (todas com tier grátis)
 
@@ -77,38 +89,48 @@ convicção. Fonte: [Petróleo x USDCAD](https://fortuneprime.com/education/geop
 - **LLM** para a interpretação macro→ativo (a parte que justifica a sua ideia).
 - Léxicos (VADER, Loughran-McDonald) só como baseline — VADER não vai bem em finanças.
 
-## Contrato HTTP (EA ↔ serviço)
+## Contrato (chamada em processo — `trader.py` → `news_ai.py`)
 
-**Requisição** (EA → serviço):
-```
-GET /bias?symbol=USDCAD
+O trader importa o motor e chama um único método, no mesmo processo Python (sem
+HTTP, sem serialização JSON, sem ponte):
+
+```python
+from smarttrader.news_ai import NewsBiasEngine, Bias
+
+engine = NewsBiasEngine(news_api_key=..., llm_api_key=..., high_impact_calendar=...)
+vies: Bias = engine.get_bias("USDCAD")
 ```
 
-**Resposta** (serviço → EA):
-```json
-{
-  "symbol": "USDCAD",
-  "bias": "sell",            // buy | sell | neutral
-  "confidence": 0.62,         // 0..1
-  "horizon_hours": 4,
-  "rationale": "Alta do petroleo favorece CAD; safe-haven USD compensa em parte",
-  "as_of": "2026-06-02T13:40:00Z",
-  "ttl_seconds": 1800,
-  "blocked": false,           // true em janela de evento de alto impacto
-  "stale": false
-}
+**Tipo de retorno** (`@dataclass Bias`, definido em `news_ai.py`):
+
+```python
+@dataclass
+class Bias:
+    symbol: str          # ativo, ex.: "USDCAD"
+    bias: int            # 1 = comprar, -1 = vender, 0 = neutro/não operar
+    confidence: float    # 0..1
+    blocked: bool = False  # janela de evento de alto impacto (não operar o spike)
+    stale: bool = False    # viés velho (TTL expirado) ou falha interna (fail-safe)
+    rationale: str = ""    # explicação curta (cadeia causal)
 ```
+
+Exemplo de viés para o caso "crise no petróleo":
+`Bias(symbol="USDCAD", bias=-1, confidence=0.62, blocked=False, stale=False,
+rationale="Alta do petroleo favorece CAD; safe-haven USD compensa em parte")`.
 
 ## Fail-safe (essencial)
 
 Se o LLM/API falhar, o TTL expirar, ou houver evento de alto impacto iminente →
-retornar `bias:"neutral"` com `blocked`/`stale` apropriados. **A regra no EA:**
+retornar um `Bias` NEUTRO (`bias=0`, `confidence=0`) com `blocked`/`stale`
+apropriados. **A regra no trader:**
 
 - A técnica **só executa se o viés confirmar** (Modo A) ou **se o viés não vetar**
   (Modo B) — ver `ESTRATEGIA.md`.
-- Viés `neutral` / `stale` / `blocked`: a IA **nunca força entrada**; no máximo a
+- Viés neutro / `stale` / `blocked`: a IA **nunca força entrada**; no máximo a
   técnica opera sozinha (Modo B) ou não opera (Modo A).
-- `WebRequest` com timeout curto e fallback para neutro.
+- **Qualquer exceção interna** em `get_bias` é capturada e vira NEUTRO com
+  `stale=True`: a IA **nunca derruba o trader**. Como é chamada em processo, não
+  há timeout de rede a gerenciar — o fail-safe é o `try/except` do próprio método.
 
 ## Plano de adoção (sem ilusão)
 
@@ -118,4 +140,5 @@ retornar `bias:"neutral"` com `blocked`/`stale` apropriados. **A regra no EA:**
 3. **Nunca** operar no spike do evento de alto impacto.
 
 > Custo de LLM controlado: ele só roda em **notícia nova relevante** (não a cada
-> consulta do EA), então cabe em tier grátis/baixo.
+> chamada de `get_bias` do trader — o cache por símbolo com TTL evita isso),
+> então cabe em tier grátis/baixo.

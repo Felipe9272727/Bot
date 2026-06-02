@@ -70,7 +70,8 @@ MACD linha < sinal, viés IA permite).
 - **TP1** = 1R (mesma distância do SL) → fecha **50%** da posição (parcial)
 - Ao atingir TP1 → move o stop para **breakeven** + buffer de 0,2×ATR (cobre spread)
 - Restante → **trailing por ATR** (Chandelier: máxima recente − 2,5×ATR)
-- Sizing: lotes = risco$ / (SL_em_pips × valor_do_pip) — já existe em `RiskManager.mqh`
+- Sizing: lote = risco$ / (distância do SL × valor por unidade) — implementado em
+  `smarttrader/risk.py` (`calculate_lot`)
 
 ## Integração com a IA de notícias (as duas chaves 🔑🔑)
 
@@ -89,6 +90,24 @@ combinação dos dois é uma decisão de projeto — duas opções:
 
 > 🔒 Em ambos os modos, a IA **nunca abre trade sozinha sem confirmação técnica**.
 > A diferença é se a IA é *obrigatória* (Modo A) ou *opcional/veto* (Modo B).
+
+### 🧭 Nota de reconciliação — Modo A x Modo B (decisão de produto em aberto)
+
+Há uma divergência **honesta e ainda não fechada** entre duas posições:
+
+- **Felipe escolheu o Modo A** (a IA decide a direção; a técnica confirma o timing).
+- A **mesa redonda recomendou o Modo B** (técnica lidera; IA como veto/sizing) —
+  ver `MESA_REDONDA.md`.
+
+Isto é uma **decisão de produto em aberto**, não um bug. O código suporta o
+**Modo A** hoje (flag `use_ai` em `trader.decide`, ver `ARQUITETURA.md`).
+
+> ⚠️ **Ponto honesto:** enquanto a IA de notícias estiver em **stub** (o
+> `NewsBiasEngine.get_bias` retorna sempre NEUTRO — ver `IA_NOTICIAS.md`), no
+> **Modo A com `use_ai=true` o bot NÃO opera**: sem viés direcional da IA, não há
+> direção para a técnica confirmar. Por isso o **default é `use_ai=false`** — o
+> bot opera **só com a estratégia técnica** até a IA real ser plugada (Fase 4 do
+> roadmap). Sem alarmismo: é factual e proposital.
 
 ## Anti-overfitting (regras de disciplina)
 
