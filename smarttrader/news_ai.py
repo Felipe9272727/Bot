@@ -288,7 +288,8 @@ class NewsBiasEngine:
             return _bias_neutro(
                 symbol, f"fail-safe bias_from_headlines: {exc!r}", stale=True)
 
-    def bias_from_live_news(self, symbol, scorer=None, max_items: int = 40) -> Bias:
+    def bias_from_live_news(self, symbol, scorer=None, max_items: int = 40,
+                            use_gdelt: bool = False) -> Bias:
         """Busca notícias AO VIVO (RSS + GDELT), filtra por relevância do símbolo
         e gera um ``Bias`` automaticamente — sem manchetes manuais.
 
@@ -305,7 +306,9 @@ class NewsBiasEngine:
 
             kws = SYMBOL_QUERY.get(symbol.upper(), [])
             itens = list(ns.fetch_rss(ns.DEFAULT_RSS_FEEDS))
-            if kws:
+            # GDELT é opcional (desligado por padrão): toma rate-limit fácil e o RSS
+            # já traz volume suficiente. Ligue use_gdelt=True se tiver chave/menos uso.
+            if use_gdelt and kws:
                 itens += list(ns.fetch_gdelt(" OR ".join(kws[:4])))
             itens = ns.dedup(itens)
             if kws:
