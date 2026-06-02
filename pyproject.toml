@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smarttrader"
+version = "2.0.0"
+description = "Bot de trading para MetaTrader 5 comandado por Python (estrategia tecnica + camada de IA)."
+readme = "README.md"
+requires-python = ">=3.11"
+
+# Dependencias necessarias para rodar estrategia/risco/noticias e os testes.
+# Observe que MetaTrader5 NAO esta aqui: ele e Windows-only e quebra no Linux.
+# Para operar de verdade (live) no Windows, use o extra opcional "live" abaixo.
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "python-dotenv>=1.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+# Extra para operacao real (live). MetaTrader5 so instala no Windows,
+# espelhando o marcador de plataforma do requirements.txt.
+live = [
+    "MetaTrader5>=5.0.45 ; platform_system == 'Windows'",
+]
+# Dependencias de teste.
+test = [
+    "pytest>=8.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["smarttrader*"]
+
+# ---------------------------------------------------------------------------
+# Configuracao do pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+# ---------------------------------------------------------------------------
+# Linters / formatadores (OPCIONAL) — descomente se quiser usar.
+# ---------------------------------------------------------------------------
+# [tool.ruff]
+# line-length = 100
+# target-version = "py311"
+#
+# [tool.black]
+# line-length = 100
+# target-version = ["py311"]

@@ -1,0 +1,40 @@
+# CI do SmartTrader
+#
+# Roda os testes automaticamente no GitHub a cada push e pull request.
+#
+# IMPORTANTE: o pacote MetaTrader5 só existe para Windows. Em Linux a
+# instalacao dele quebra. Por isso NAO instalamos MetaTrader5 aqui — os
+# testes de estrategia/risco/noticias rodam sem o MT5.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout do codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          # Cache de pip (opcional) para acelerar instalacoes.
+          cache: pip
+
+      - name: Instalar dependencias de teste
+        # NAO instalamos MetaTrader5: e Windows-only e quebra no Linux.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy pytest python-dotenv
+
+      - name: Rodar testes
+        run: pytest -q
