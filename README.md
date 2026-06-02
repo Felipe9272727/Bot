@@ -1,55 +1,73 @@
-# 🤖 SmartTrader — Bot de Trading para MetaTrader 4
+# 🤖 SmartTrader — Bot de Trading para MetaTrader 5 (a IA é a trader)
 
-Bot de operações automatizadas para **MetaTrader 4**, com análise técnica e
-uma camada opcional de **Inteligência Artificial**. Construído para ser
-**testado com segurança** (backtest + conta demo) antes de qualquer dinheiro real.
+Bot de operações automatizadas em **Python comandando o MetaTrader 5**. A IA
+lê o mercado (e, quando plugada, **notícias macro**), decide a direção e executa
+as ordens ela mesma, 24h. Construído para ser **testado com segurança** (testes
++ backtest + conta demo) antes de qualquer dinheiro real.
 
-> ⚠️ **Aviso importante:** trading envolve risco real de perda. Nenhum bot
-> garante lucro. Este projeto te dá uma ferramenta **disciplinada** (segue
-> estratégia, controla risco, opera sem emoção), mas o resultado depende da
-> estratégia e das condições de mercado. **Sempre teste em demo primeiro.**
+> ⚠️ **Aviso:** trading tem risco real de perda. Nenhum bot garante lucro. Este
+> projeto te dá disciplina (segue estratégia, controla risco, opera sem emoção),
+> mas o resultado depende da estratégia e do mercado. **Sempre teste em demo.**
 
-## Por que MT4 + IA externa?
+## Como funciona
 
-O MT4 roda robôs (Expert Advisors) em MQL4 e tem um **Strategy Tester**
-embutido — dá pra simular anos de mercado com dinheiro fake. A IA roda
-**fora** do MT4, em um serviço Python no seu dispositivo, e o EA conversa
-com ela via HTTP local. Assim o bot funciona só com técnica e ganha o
-"cérebro" de IA quando você quiser.
+```
+notícias ─► news_ai ─► viés de direção ┐
+                                        ├─► trader (Modo A) ─► mt5_connector ─► MT5 (DEMO)
+preço ────► strategy ─► confirma direção┘         │
+                                          risk (lote, drawdown, travas)
+```
 
-Veja [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) para o desenho completo.
+- **A IA decide a direção** (a partir de notícias macro); a **estratégia técnica
+  confirma** o timing. Só opera quando as duas concordam (Modo A).
+- Roda **direto em Python** via o pacote oficial `MetaTrader5` — sem ponte HTTP.
 
 ## Estrutura
 
 ```
-mql4/
-  Experts/SmartTraderEA.mq4   # O robô (roda dentro do MT4)
-  Include/Indicators.mqh      # Sinais de análise técnica
-  Include/RiskManager.mqh     # Gestão de risco e tamanho de lote
-  Include/AIBridge.mqh        # Ponte com o serviço de IA
-ai/
-  server.py                   # Serviço de IA (HTTP local)
-  model.py                    # Onde o modelo de IA é plugado
-  requirements.txt
-docs/
-  ARQUITETURA.md              # Contrato de interface
-  INSTALACAO.md               # Como instalar e rodar
-  BACKTEST.md                 # Como testar no Strategy Tester
+smarttrader/
+  config.py         # configuração via .env
+  indicators.py     # EMA, ATR, ADX, MACD (pandas puro)
+  strategy.py       # confluência SmartTrader v2 -> direção
+  risk.py           # lote por ATR + travas (perda diária, drawdown, perdas seguidas)
+  news_ai.py        # motor de viés por notícias (stub plugável)
+  news_sources.py   # ingestão: RSS / GDELT / calendário Finnhub
+  news_mapper.py    # raciocínio macro->direção (crise no petróleo -> ativo)
+  mt5_connector.py  # conexão e execução no MT5
+  trader.py         # laço 24h (a IA é a trader)
+  backtest.py       # backtest offline com custos
+tests/              # 88 testes (rodam em qualquer SO, sem MT5)
+docs/               # arquitetura, estratégia, IA de notícias, mesa redonda, instalação
 ```
 
-## Roadmap por fases
+## Testar (do mais seguro ao mais real)
 
-- [x] **Fase 0** — Fundação, arquitetura e contratos de interface
-- [ ] **Fase 1** — EA técnico funcional + gestão de risco (backtestável)
-- [ ] **Fase 2** — Ponte de IA + serviço Python stub (testável ponta a ponta)
-- [ ] **Fase 3** — Modelo de IA real plugado (você roda no seu dispositivo)
-- [ ] **Fase 4** — Otimização, validação em demo prolongada
-- [ ] **Fase 5** — (Só após aprovação) ligar conta real com travas de segurança
+**1. Offline, qualquer PC (sem MT5, sem dinheiro):**
+```bash
+make venv && make test        # roda os 88 testes
+make backtest                 # backtest de exemplo (dados sintéticos)
+```
 
-## Começando
+**2. No Windows com MT5 (conta DEMO):** veja [`docs/INSTALACAO_MT5.md`](docs/INSTALACAO_MT5.md)
+```bash
+python -m smarttrader.trader --once   # com DRY_RUN=true: mostra a decisão sem operar
+```
 
-1. Leia [`docs/INSTALACAO.md`](docs/INSTALACAO.md)
-2. Compile o EA no MetaEditor e rode no **Strategy Tester** (demo)
-3. Veja [`docs/BACKTEST.md`](docs/BACKTEST.md) para interpretar resultados
+**3. Dinheiro real:** só depois da demo provar valor — e com sua autorização.
 
-**Status atual:** Fase 0 concluída. Fase 1 em construção.
+## Roadmap
+
+- [x] Fase 0 — Arquitetura, estratégia (pesquisada) e contratos
+- [x] Fase 1 — Núcleo Python: indicadores, estratégia v2, risco, config (testado)
+- [x] Fase 2 — Conector MT5 + laço do trader + backtest + CI
+- [x] Fase 3 — Esqueleto da IA de notícias (sources, mapper, motor de viés)
+- [ ] Fase 4 — Plugar IA real (FinBERT + LLM) no seu dispositivo
+- [ ] Fase 5 — Backtest com dados REAIS + validação fora-de-amostra
+- [ ] Fase 6 — Demo prolongada (3-6 meses)
+- [ ] Fase 7 — (Só após aprovação) conta real com travas
+
+Documentação: [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) ·
+[`docs/ESTRATEGIA.md`](docs/ESTRATEGIA.md) ·
+[`docs/IA_NOTICIAS.md`](docs/IA_NOTICIAS.md) ·
+[`docs/MESA_REDONDA.md`](docs/MESA_REDONDA.md) ·
+[`docs/INSTALACAO_MT5.md`](docs/INSTALACAO_MT5.md)
