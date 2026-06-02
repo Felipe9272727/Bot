@@ -1,0 +1,23 @@
+# Dependências do SmartTrader (MT5 + IA em Python)
+
+# Conexão com o terminal MetaTrader 5 (Windows; pacote oficial).
+# Em Linux/macOS a instalação falha — estratégia/risco/backtest rodam sem ele.
+MetaTrader5>=5.0.45 ; platform_system == "Windows"
+
+# Dados e indicadores
+pandas>=2.0
+numpy>=1.24
+
+# Configuração
+python-dotenv>=1.0
+
+# Notícias / IA (motor de viés)
+requests>=2.31
+
+# Testes
+pytest>=8.0
+
+# Opcionais (descomente quando for plugar IA real):
+# transformers>=4.40      # FinBERT
+# torch>=2.2              # backend do FinBERT
+# feedparser>=6.0         # RSS de notícias
