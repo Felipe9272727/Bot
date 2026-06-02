@@ -1,0 +1,34 @@
+# MetaTrader compilados
+*.ex4
+*.ex5
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Segredos e config local (NUNCA commitar chaves/credenciais)
+.env
+*.local
+config.local.json
+secrets/
+
+# Modelos de IA (geralmente grandes; versionar à parte)
+ai/models/*.pkl
+ai/models/*.h5
+ai/models/*.pt
+ai/models/*.onnx
+
+# Logs e dados
+*.log
+logs/
+data/*.csv
+
+# Sistema
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
