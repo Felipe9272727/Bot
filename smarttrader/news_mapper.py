@@ -114,6 +114,11 @@ _DOWN_WORDS = [
     "cai", "caindo", "despencou", "despenca", "recuo",
 ]
 
+# Constante de calibração da FORÇA (strength): quanto maior, mais manchetes são
+# necessárias para o tema ganhar força. K=4 dá uma curva suave e volume-consciente
+# (1 manchete -> 0.20, 4 -> 0.50, 16 -> 0.80) que nunca satura em 1.0.
+_STRENGTH_K = 4.0
+
 
 # ----------------------------------------------------------------------------
 # detect_themes — extrai ThemeSignal dos textos
@@ -140,27 +145,31 @@ def detect_themes(texts: list[str]) -> list[ThemeSignal]:
     Honestidade: é um detector de palavra-chave simples, NÃO entende contexto
     nem negação complexa ("not a recession"). É de propósito: baseline auditável.
     """
-    # Junta tudo num único texto minúsculo para busca por substring.
-    blob = " \n ".join(t for t in texts if t).lower()
-    if not blob.strip():
+    # Lista de manchetes minúsculas (uma por documento). Usamos FREQUÊNCIA DE
+    # DOCUMENTOS (em quantas manchetes o tema aparece), não a contagem total de
+    # ocorrências — assim o volume de manchetes NÃO infla a força artificialmente
+    # (o problema de calibração: com 100+ manchetes, hits saturava em ~1.0).
+    docs = [t.lower() for t in texts if t and t.strip()]
+    n_docs = len(docs)
+    if n_docs == 0:
         logger.debug("detect_themes: nenhum texto util recebido")
         return []
+    blob = " \n ".join(docs)  # usado só para inferir o sentimento (alta/baixa)
 
     signals: list[ThemeSignal] = []
 
     for theme, keywords in THEME_KEYWORDS.items():
-        # --- Frequência: conta ocorrências de cada palavra-chave do tema. -----
-        hits = 0
-        for kw in keywords:
-            # Busca por substring simples (case-insensitive já que blob é lower).
-            # count() pega todas as ocorrências; multi-palavra ("rate hike") ok.
-            hits += blob.count(kw)
-        if hits == 0:
+        # --- Frequência de DOCUMENTOS: em quantas manchetes o tema aparece. ----
+        doc_hits = sum(1 for d in docs if any(kw in d for kw in keywords))
+        if doc_hits == 0:
             continue  # tema ausente
 
-        # --- Força saturante: 1 -> ~0.5, 2 -> ~0.67, 3 -> 0.75, ... -> ~1.0.
-        # Fórmula hits/(hits+1) é monotônica, saturante e fácil de explicar.
-        strength = hits / (hits + 1.0)
+        # --- Força com retorno decrescente e volume-consciente. ---------------
+        # strength = doc_hits / (doc_hits + K). Com K=_STRENGTH_K=4:
+        #   1 manchete -> 0.20, 2 -> 0.33, 4 -> 0.50, 8 -> 0.67, 16 -> 0.80.
+        # Cresce com a quantidade de manchetes que confirmam o tema, mas NUNCA
+        # chega a 1.0 (um baseline por palavra-chave não deve ser "certeza").
+        strength = doc_hits / (doc_hits + _STRENGTH_K)
 
         # --- Sentimento: olha termos de alta/baixa no blob inteiro. -----------
         up_count = sum(blob.count(w) for w in _UP_WORDS)
@@ -181,9 +190,9 @@ def detect_themes(texts: list[str]) -> list[ThemeSignal]:
                 sentiment = 1
 
         logger.debug(
-            "detect_themes: tema=%s hits=%d strength=%.2f sentiment=%+d "
+            "detect_themes: tema=%s doc_hits=%d/%d strength=%.2f sentiment=%+d "
             "(up=%d down=%d)",
-            theme, hits, strength, sentiment, up_count, down_count,
+            theme, doc_hits, n_docs, strength, sentiment, up_count, down_count,
         )
         signals.append(ThemeSignal(theme=theme, sentiment=sentiment,
                                     strength=round(strength, 4)))
@@ -300,6 +309,11 @@ MIN_CONFIDENCE = 0.15
 # sentiment 1 => ~0.42) já dê confiança relevante (~0.42/0.8 ≈ 0.53).
 _CONF_SCALE = 0.8
 
+# Teto de confiança do BASELINE por regras: um detector de palavra-chave NÃO deve
+# se dizer quase 100% certo. Reservamos a faixa acima disso para quando o modelo
+# (FinBERT/LLM via `scorer`) confirmar. Mantém o baseline honesto.
+_MAX_BASELINE_CONFIDENCE = 0.85
+
 
 # ----------------------------------------------------------------------------
 # bias_for_symbol — combina temas -> viés direcional do símbolo
@@ -365,8 +379,9 @@ def bias_for_symbol(symbol: str,
 
     # Magnitude bruta total das forças (sem cancelamento), p/ medir conflito.
     total_force = pos_force + neg_force
-    # Confiança candidata: força LÍQUIDA normalizada e saturada em [0,1].
-    confidence = min(abs(net) / _CONF_SCALE, 1.0)
+    # Confiança candidata: força LÍQUIDA normalizada e saturada, com TETO do
+    # baseline (a regra por palavra-chave nunca afirma quase-certeza).
+    confidence = min(abs(net) / _CONF_SCALE, _MAX_BASELINE_CONFIDENCE)
 
     # --- Detecção de CONFLITO -------------------------------------------------
     # Há conflito quando existem forças relevantes nos DOIS sentidos e o líquido
