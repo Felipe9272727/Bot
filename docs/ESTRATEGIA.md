@@ -44,15 +44,25 @@ Mercados-alvo iniciais: majors (EURUSD, GBPUSD, USDJPY). Execução em **H1**, v
 
 **COMPRA:**
 1. Tendência HTF de alta: preço H1 > EMA200 **e** Close D1 > EMA50 D1
-2. Gatilho: EMA20 cruza **acima** da EMA50
+2. Alinhamento de alta: **EMA20 acima da EMA50** (estado, não o cruzamento de
+   um único candle — ver nota abaixo)
 3. ADX(14) ≥ 25
-4. MACD: linha > sinal
+4. MACD: linha > sinal (gatilho de momentum)
 5. Sessão = janela Londres–NY
 6. Sem notícia de alto impacto na próxima 1h (ver `IA_NOTICIAS.md`)
 7. **Viés da IA de notícias** permite (ver "Integração com a IA" abaixo)
 
-**VENDA:** condições espelhadas (HTF de baixa, EMA20 cruza abaixo da EMA50,
+**VENDA:** condições espelhadas (HTF de baixa, EMA20 abaixo da EMA50,
 MACD linha < sinal, viés IA permite).
+
+> 🛠️ **Nota de design (decidida na implementação):** usamos o **estado** de
+> alinhamento `EMA20 > EMA50` em vez do **evento** de cruzamento num único
+> candle. Motivo: exigir o cruzamento exato junto com "preço > EMA200 + ADX
+> forte" é quase contraditório (cruzamento fresco = tendência recém-nascida;
+> preço>EMA200/ADX alto = tendência madura), o que deixa a estratégia frágil e
+> quase sem operar. O MACD faz o papel de gatilho de momentum e a trava de "1
+> posição por símbolo" evita re-entradas em excesso. Mudança refletida em
+> `smarttrader/strategy.py` e validada por testes.
 
 ## Regras de saída (100% por ATR)
 
