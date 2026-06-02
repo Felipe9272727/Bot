@@ -33,6 +33,7 @@ def main(argv=None) -> int:
     ap.add_argument("--state", default="paper_state.json", help="arquivo de estado")
     ap.add_argument("--reset", action="store_true", help="zera a conta paper")
     ap.add_argument("--ai", action="store_true", help="liga a IA de notícias ao vivo (Modo A)")
+    ap.add_argument("--model", default="", help="caminho do FinBERT (ex.: /content/drive/MyDrive/finbert_ft)")
     a = ap.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO,
@@ -54,8 +55,19 @@ def main(argv=None) -> int:
                        cfg.max_consec_losses, cfg.max_open_trades)
     if a.ai:
         # No Modo A a IA decide a direção pelas notícias AO VIVO.
-        news.get_bias = news.bias_from_live_news  # type: ignore[assignment]
-        log.info("IA de notícias ao vivo LIGADA (Modo A).")
+        # Se houver caminho de modelo, carrega o SEU FinBERT para refinar a confiança.
+        scorer = None
+        model_path = a.model or os.environ.get("MODEL_PATH", "")
+        if model_path:
+            try:
+                from .sentiment import FinBertSentiment
+                scorer = FinBertSentiment(model_path)
+                log.info("FinBERT carregado de %s (refina a confiança).", model_path)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Não carreguei o FinBERT (%r). Seguindo sem ele.", exc)
+        news.get_bias = lambda s, _sc=scorer: news.bias_from_live_news(s, scorer=_sc)  # type: ignore[assignment]
+        log.info("IA de notícias ao vivo LIGADA (Modo A)%s.",
+                 " com seu FinBERT" if scorer else " (sem FinBERT)")
 
     trader = Trader(cfg, broker, news, risk)
 
